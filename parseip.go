@@ -1,4 +1,4 @@
-package ppp
+package main
 
 import (
 	"encoding/binary"
@@ -203,25 +203,30 @@ func Single(s string) (*NetIP, error) {
 	return single, nil
 }
 
-func ipParse(s string) (*NetIP, error) {
-	var netIP *NetIP
+func parseIP(s string) ([]*NetIP, error) {
+	var netIP []*NetIP
+	var ip *NetIP
 	var err error
 	if s == "" {
 		return nil, fmt.Errorf("nothing input:%s", s)
 	}
-	switch {
-	case strings.Contains(s, "-"):
-		netIP, err = ParseRangeIP(s)
-	case strings.Contains(s, "/"):
-		netIP, err = ParseCIDRIP(s)
-	default:
-		netIP, err = Single(s)
+	r := strings.Split(s, ",")
+	for _, a := range r {
+		switch {
+		case strings.Contains(a, "-"):
+			ip, err = ParseRangeIP(a)
+		case strings.Contains(a, "/"):
+			ip, err = ParseCIDRIP(a)
+		default:
+			ip, err = Single(a)
 
+		}
+		if err != nil {
+			return nil, err
+		}
+		netIP = append(netIP, ip)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return netIP, nil
+	return netIP, err
 }
 
 func (np *NetIP) checkIPType() (*ipv4, *ipv6, error) {
@@ -254,31 +259,34 @@ func ipToString(ip []net.IP) []string {
 }
 
 func ParseIP(s string) ([]net.IP, error) {
-	ip, err := ipParse(s)
+	ips, err := parseIP(s)
+	var IP []net.IP
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
+	for _, ip := range ips {
+		ipv4, ipv6, err := ip.checkIPType()
+		if err != nil {
+			return nil, err
+		}
 
-	ipv4, ipv6, err := ip.checkIPType()
-	if err != nil {
-		fmt.Println("IP type parse incorrect", err)
-		return nil, err
+		switch {
+		case ipv4 != nil:
+			fmt.Printf("IPv4: %s\n", ipv4.String())
+			fmt.Printf("IPv4 address Number : %s\n", ipv4.Num())
+			fmt.Printf("IPv4 address List: %v\n", ipToString(ipv4.List()))
+			fmt.Println("---------------------------------")
+			IP = append(IP, ipv4.List()...)
+		case ipv6 != nil:
+			fmt.Printf("IPv6: %s\n", ipv6.String())
+			fmt.Printf("IPv6 address Number: %s\n", ipv6.Num())
+			fmt.Printf("IPv6 address List List: %v\n", ipToString(ipv6.List()))
+			fmt.Println("---------------------------------")
+			IP = append(IP, ipv6.List()...)
+		default:
+			panic("unreachable code")
+		}
+
 	}
-
-	switch {
-	case ipv4 != nil:
-		// fmt.Printf("IPv4: %s\n", ipv4.String())
-		// fmt.Printf("IPv4 address Number : %s\n", ipv4.Num())
-		// fmt.Printf("IPv4 address List: %v\n", ipToString(ipv4.List()))
-		return ipv4.List(), nil
-	case ipv6 != nil:
-		// fmt.Printf("IPv6: %s\n", ipv6.String())
-		// fmt.Printf("IPv6 address Number: %s\n", ipv6.Num())
-		// fmt.Printf("IPv6 address List List: %v\n", ipToString(ipv6.List()))
-		return ipv6.List(), nil
-	default:
-		panic("unreachable code")
-	}
-
+	return IP, nil
 }
