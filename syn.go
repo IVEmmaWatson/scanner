@@ -12,7 +12,7 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-type create interface {
+type funcManager interface {
 	ipv4ARP() error
 	ipv6NDP() error
 

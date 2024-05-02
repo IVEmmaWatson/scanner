@@ -1,4 +1,4 @@
-package ppp
+package main
 
 import (
 	"errors"
@@ -13,15 +13,16 @@ type PortRange struct {
 	end   uint16
 }
 
+// 因为strconv.Atoi不直接适用uint16，所有用int中转
 type intRange struct {
 	begin int
 	end   int
 }
 
 func ParsePort(s string) ([]uint16, error) {
-	prs, err := portArrayList(s)
+	prs, err := newPortRanges(s)
 	if err != nil {
-		return nil, err
+		fmt.Println(err)
 	}
 	ports := make([]uint16, 0, len(prs)*16)
 	for _, pr := range prs {
@@ -30,8 +31,8 @@ func ParsePort(s string) ([]uint16, error) {
 	return uniquePortRange(ports), nil
 }
 
-func portArrayList(s string) ([]*PortRange, error) {
-	results := make([]*PortRange, 0, len(s)/8) // 这里len(s)/8忘了
+func newPortRanges(s string) ([]*PortRange, error) {
+	result := make([]*PortRange, 0, len(s)/8) // 这里len(s)/8忘了
 	s = strings.ReplaceAll(s, " ", "")
 	sections := strings.Split(s, ",")
 
@@ -39,20 +40,20 @@ func portArrayList(s string) ([]*PortRange, error) {
 		if section == "" {
 			continue
 		}
-		pr, err := portRangeSwitch(section)
+		pr, err := portRangeCheck(section)
 		if err != nil {
 			return nil, err
 		}
-		results = append(results, pr)
+		result = append(result, pr)
 	}
 
-	if len(results) < 1 {
+	if len(result) < 1 {
 		return nil, errors.New("empty port range")
 	}
-	return results, nil
+	return result, nil
 }
 
-func portRangeSwitch(s string) (*PortRange, error) {
+func portRangeCheck(s string) (*PortRange, error) {
 	var pr *PortRange
 
 	switch {
@@ -69,7 +70,7 @@ func portRangeSwitch(s string) (*PortRange, error) {
 		}
 		return pr, nil
 	default:
-		ir, err := SinglePort(s)
+		ir, err := parseSinglePort(s)
 
 		if err != nil {
 			return nil, err
@@ -106,7 +107,7 @@ func parsePortRange(s string) (*intRange, error) {
 	}, nil
 }
 
-func SinglePort(s string) (*intRange, error) {
+func parseSinglePort(s string) (*intRange, error) {
 	begin, err := strconv.Atoi(s)
 	if err != nil {
 		return nil, fmt.Errorf("invaild single port parse：%s", s)

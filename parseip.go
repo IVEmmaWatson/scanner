@@ -18,12 +18,12 @@ type ipv6 struct {
 	end   *big.Int
 }
 
-type NetIP struct {
+type IpRange struct {
 	begin net.IP
 	end   net.IP
 }
 
-type IPRange interface {
+type ipManager interface {
 	IsIPv4() bool
 	IsIPv6() bool
 	Begin() net.IP
@@ -59,18 +59,18 @@ func (ipv4 *ipv4) Num() *big.Int {
 }
 
 func (ipv4 *ipv4) List() []net.IP {
-	result := make([]uint32, 0)
-	results := make([]net.IP, 0)
+	unitList := make([]uint32, 0)
+	ipv4List := make([]net.IP, 0)
 	for ip := ipv4.begin; ip <= ipv4.end; ip++ {
-		result = append(result, ip)
+		unitList = append(unitList, ip)
 	}
 
 	buf := make([]byte, 4)
-	for _, v := range result {
+	for _, v := range unitList {
 		binary.BigEndian.PutUint32(buf, v)
-		results = append(results, buf)
+		ipv4List = append(ipv4List, buf)
 	}
-	return results
+	return ipv4List
 }
 
 func (ipv4 *ipv4) String() string {
@@ -101,28 +101,28 @@ func (ipv6 *ipv6) Num() *big.Int {
 }
 
 func (ipv6 *ipv6) List() []net.IP {
-	result := make([]*big.Int, 0)
-	results := make([]net.IP, 0)
+	bigIntList := make([]*big.Int, 0)
+	ipv6List := make([]net.IP, 0)
 	for ipv6.begin.Cmp(ipv6.end) <= 0 {
 		buf := big.NewInt(0)
 		buf.Set(ipv6.begin)
-		result = append(result, buf)
+		bigIntList = append(bigIntList, buf)
 		ipv6.begin = ipv6.begin.Add(ipv6.begin, big.NewInt(1))
 	}
 
-	for _, re := range result {
+	for _, re := range bigIntList {
 		ipAddr := make(net.IP, net.IPv6len)
 		res := re.FillBytes(ipAddr)
-		results = append(results, res)
+		ipv6List = append(ipv6List, res)
 	}
-	return results
+	return ipv6List
 }
 
 func (ipv6 *ipv6) String() string {
 	return fmt.Sprintf("%s-%s", ipv6.Begin(), ipv6.End())
 }
 
-func newIPv4(nip *NetIP) (*ipv4, error) {
+func newIPv4(nip *IpRange) (*ipv4, error) {
 	begin := nip.begin.To4()
 	end := nip.end.To4()
 	if begin == nil || end == nil {
@@ -139,8 +139,8 @@ func newIPv4(nip *NetIP) (*ipv4, error) {
 	}, nil
 }
 
-func newIPv6(nip *NetIP) (*ipv6, error) {
-	ip6 := new(ipv6)
+func newIPv6(nip *IpRange) (*ipv6, error) {
+	ip := new(ipv6)
 	begin := nip.begin.To16()
 	end := nip.end.To16()
 
@@ -155,15 +155,15 @@ func newIPv6(nip *NetIP) (*ipv6, error) {
 		return nil, fmt.Errorf("ipv6 address %v lager than %v", nip.begin, nip.end)
 	}
 
-	ip6.begin = new(big.Int).SetBytes(b.Bytes())
-	ip6.end = new(big.Int).SetBytes(e.Bytes())
+	ip.begin = new(big.Int).SetBytes(b.Bytes())
+	ip.end = new(big.Int).SetBytes(e.Bytes())
 
-	return ip6, nil
+	return ip, nil
 
 }
 
-func ParseCIDRIP(s string) (*NetIP, error) {
-	cidr := new(NetIP)
+func ParseCIDRIP(s string) (*IpRange, error) {
+	section := new(IpRange)
 	count := strings.Count(s, "/")
 	if count != 1 {
 		return nil, fmt.Errorf("incorrect ipCIDR parse:%v", s)
@@ -172,77 +172,77 @@ func ParseCIDRIP(s string) (*NetIP, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse CIDR wrong:%v", err)
 	}
-	cidr.begin = ip.Mask(ipNet.Mask)
-	for i := range cidr.begin {
-		cidr.end = append(cidr.end, cidr.begin[i]|^ipNet.Mask[i])
+	section.begin = ip.Mask(ipNet.Mask)
+	for i := range section.begin {
+		section.end = append(section.end, section.begin[i]|^ipNet.Mask[i])
 	}
-	return cidr, nil
+	return section, nil
 }
 
-func ParseRangeIP(s string) (*NetIP, error) {
-	rp := new(NetIP)
+func ParseRangeIP(s string) (*IpRange, error) {
+	section := new(IpRange)
 	hyphenIdx := strings.Index(s, "-")
 	numHyphen := strings.Count(s, "-")
-	rp.begin = net.ParseIP(s[:hyphenIdx])
-	rp.end = net.ParseIP(s[hyphenIdx+1:])
-	if rp.begin == nil || rp.end == nil || numHyphen != 1 {
+	section.begin = net.ParseIP(s[:hyphenIdx])
+	section.end = net.ParseIP(s[hyphenIdx+1:])
+	if section.begin == nil || section.end == nil || numHyphen != 1 {
 		return nil, fmt.Errorf("wrong ip range,%v\n", s)
 	}
-	return rp, nil
+	return section, nil
 }
 
-func Single(s string) (*NetIP, error) {
-	single := new(NetIP)
+func SingleIP(s string) (*IpRange, error) {
+	section := new(IpRange)
 	ip := net.ParseIP(s)
 	if ip == nil {
 		return nil, fmt.Errorf("wrong single ip %v", s)
 	}
-	single.begin = ip
-	single.end = ip
+	section.begin = ip
+	section.end = ip
 
-	return single, nil
+	return section, nil
 }
 
-func parseIP(s string) ([]*NetIP, error) {
-	var netIP []*NetIP
-	var ip *NetIP
+func newIpRange(s string) ([]*IpRange, error) {
+	var result []*IpRange
+	var ir *IpRange
 	var err error
 	if s == "" {
 		return nil, fmt.Errorf("nothing input:%s", s)
 	}
-	r := strings.Split(s, ",")
-	for _, a := range r {
+	raw := strings.Split(s, ",")
+	for _, v := range raw {
 		switch {
-		case strings.Contains(a, "-"):
-			ip, err = ParseRangeIP(a)
-		case strings.Contains(a, "/"):
-			ip, err = ParseCIDRIP(a)
+		case strings.Contains(v, "-"):
+			ir, err = ParseRangeIP(v)
+		case strings.Contains(v, "/"):
+			ir, err = ParseCIDRIP(v)
 		default:
-			ip, err = Single(a)
+			ir, err = SingleIP(v)
 
 		}
 		if err != nil {
 			return nil, err
 		}
-		netIP = append(netIP, ip)
+		result = append(result, ir)
 	}
-	return netIP, err
+	return result, err
 }
 
-func (np *NetIP) checkIPType() (*ipv4, *ipv6, error) {
+func (ip *IpRange) checkIPType() (*ipv4, *ipv6, error) {
 	var ipv4 *ipv4
 	var ipv6 *ipv6
 
 	var err error
-	if np.begin.To4() != nil {
-		ipv4, err = newIPv4(np)
+	if ip.begin.To4() != nil {
+		ipv4, err = newIPv4(ip)
 		if err != nil {
 			return nil, nil, err
 		}
 		return ipv4, nil, nil
 	}
 
-	ipv6, err = newIPv6(np)
+	ipv6, err = newIPv6(ip)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -251,15 +251,15 @@ func (np *NetIP) checkIPType() (*ipv4, *ipv6, error) {
 }
 
 func ipToString(ip []net.IP) []string {
-	ips := make([]string, 0)
+	ipList := make([]string, 0)
 	for _, v := range ip {
-		ips = append(ips, v.String())
+		ipList = append(ipList, v.String())
 	}
-	return ips
+	return ipList
 }
 
 func ParseIP(s string) ([]net.IP, error) {
-	ips, err := parseIP(s)
+	ips, err := newIpRange(s)
 	var IP []net.IP
 	if err != nil {
 		return nil, err
