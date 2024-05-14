@@ -30,8 +30,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	ipResult, err := ppp.ParseIP(DstIP)
-	portResult, err := ppp.ParsePort(port)
+	ipResult, err := scanner.ParseIP(DstIP)
+	portResult, err :=scanner.ParsePort(port)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(0)
