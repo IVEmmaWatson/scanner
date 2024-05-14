@@ -56,10 +56,9 @@ func newPortRanges(s string) ([]*PortRange, error) {
 func portRangeCheck(s string) (*PortRange, error) {
 	var pr *PortRange
 
-	switch {
-	case strings.Contains(s, "-"):
+	if strings.Contains(s, "-") {
 		// 必须把pr, err = ir.ToUint16()放到err!=nil后面，
-		//因为如果有err代表ir为nil,ir为nil就会导致.ToUint16报错空指针引用
+		// 因为如果有err代表ir为nil,ir为nil就会导致.ToUint16报错空指针引用
 		ir, err := parsePortRange(s)
 		if err != nil {
 			return nil, err
@@ -69,19 +68,19 @@ func portRangeCheck(s string) (*PortRange, error) {
 			return nil, err
 		}
 		return pr, nil
-	default:
-		ir, err := parseSinglePort(s)
-
-		if err != nil {
-			return nil, err
-		}
-		pr, err = ir.ToUint16()
-
-		if err != nil {
-			return nil, err
-		}
-		return pr, nil
 	}
+
+	ir, err := parseSinglePort(s)
+
+	if err != nil {
+		return nil, err
+	}
+	pr, err = ir.ToUint16()
+
+	if err != nil {
+		return nil, err
+	}
+	return pr, nil
 
 }
 
@@ -125,11 +124,12 @@ func parseSinglePort(s string) (*intRange, error) {
 
 func (ir *intRange) ToUint16() (*PortRange, error) {
 	pr := new(PortRange)
-	switch {
-	case ir.begin > 65535 || ir.end > 65535:
+	if ir.begin > 65535 || ir.end > 65535 {
 		return nil, fmt.Errorf("port out of range:%v-%v", ir.begin, ir.end)
-	case ir.begin > ir.end:
-		return nil, fmt.Errorf("the begin port is larger than the end port: %v-%v", ir.begin, ir.end)
+	}
+	if ir.begin > ir.end {
+		const errStr = "the begin port is larger than the end port: %v-%v"
+		return nil, fmt.Errorf(errStr, ir.begin, ir.end)
 	}
 	pr.begin = uint16(ir.begin)
 	pr.end = uint16(ir.end)

@@ -23,15 +23,15 @@ type IpRange struct {
 	end   net.IP
 }
 
-type ipManager interface {
-	IsIPv4() bool
-	IsIPv6() bool
-	Begin() net.IP
-	End() net.IP
-	Num() *big.Int
-	List() []net.IP
-	String() string
-}
+// type ipManager interface {
+// 	IsIPv4() bool
+// 	IsIPv6() bool
+// 	Begin() net.IP
+// 	End() net.IP
+// 	Num() *big.Int
+// 	List() []net.IP
+// 	String() string
+// }
 
 func (ipv4 *ipv4) IsIPv4() bool {
 	return true
@@ -61,6 +61,7 @@ func (ipv4 *ipv4) Num() *big.Int {
 func (ipv4 *ipv4) List() []net.IP {
 	unitList := make([]uint32, 0)
 	ipv4List := make([]net.IP, 0)
+	// begin <= end
 	for ip := ipv4.begin; ip <= ipv4.end; ip++ {
 		unitList = append(unitList, ip)
 	}
@@ -103,6 +104,7 @@ func (ipv6 *ipv6) Num() *big.Int {
 func (ipv6 *ipv6) List() []net.IP {
 	bigIntList := make([]*big.Int, 0)
 	ipv6List := make([]net.IP, 0)
+	// begin <= end
 	for ipv6.begin.Cmp(ipv6.end) <= 0 {
 		buf := big.NewInt(0)
 		buf.Set(ipv6.begin)
@@ -151,6 +153,7 @@ func newIPv6(nip *IpRange) (*ipv6, error) {
 	b := new(big.Int).SetBytes(begin)
 	e := new(big.Int).SetBytes(end)
 
+	//
 	if b.Cmp(e) == 1 {
 		return nil, fmt.Errorf("ipv6 address %v lager than %v", nip.begin, nip.end)
 	}

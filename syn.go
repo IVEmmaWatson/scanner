@@ -12,23 +12,6 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-type funcManager interface {
-	ipv4ARP() error
-	ipv6NDP() error
-
-	ipv4GetAddr() error
-	ipv6GetAddr() error
-
-	ipv4SynRequest() error
-	ipv6SynRequest() error
-
-	tcpRead() error
-
-	route() error
-	interfaceName() error
-	ipCheck() bool
-}
-
 type Scanner struct {
 	srcMAC  net.HardwareAddr
 	dstMAC  net.HardwareAddr
@@ -39,7 +22,7 @@ type Scanner struct {
 	buf     gopacket.SerializeBuffer
 	opt     gopacket.SerializeOptions
 	CIDR    string
-	iFName  string
+	ifName  string
 	tcpPort []uint16
 }
 
@@ -47,7 +30,7 @@ func SynScan(dstIP net.IP, gateway, srcCIDR string, port []uint16) error {
 
 	gw := net.ParseIP(gateway)
 	cidr := srcCIDR
-	
+
 	s, err := newSyn(cidr, dstIP, gw, port)
 	if err != nil {
 		return err
@@ -277,7 +260,8 @@ func (s *Scanner) ipv6GetAddr() error {
 	for {
 		data, _, err := s.handle.ReadPacketData()
 		if err != nil {
-			if err == pcap.NextErrorTimeoutExpired {
+			e, ok := err.(pcap.NextError)
+			if ok && e == pcap.NextErrorTimeoutExpired {
 				fmt.Println("NDP 响应超时")
 				break
 			}
@@ -457,7 +441,7 @@ func (s *Scanner) interfaceName() error {
 		}
 		for _, addr := range Addr {
 			if addr.String() == s.CIDR {
-				s.iFName = face.Name
+				s.ifName = face.Name
 				s.srcMAC = face.HardwareAddr
 			}
 		}
