@@ -1,4 +1,4 @@
-package asd
+package scanner
 
 import (
 	"errors"
