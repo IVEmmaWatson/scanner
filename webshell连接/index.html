@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>WebShell</title>
+    <link href="/static/style.css" rel="stylesheet" >
+</head>
+<body>
+<div id="app">
+    <div class="sidebar">
+        <h1>WebShell</h1>
+        <form @submit.prevent="executeCommand" id="myForm">
+            <label for="url">Target IP Address:</label>
+            <input class="urlText" id="url" name="url" type="text" v-model="url">
+            <label for="key">Key Value:</label>
+            <input class="keyText" id="key" name="key" type="text" v-model="key">
+            <input id="link" type="submit" value="连接">
+        </form>
+        <button @click="execute" >文件管理</button>
+        <button @click="cmdT" >命令执行</button>
+        <button @click="createInputLine" >虚拟终端</button>
+    </div>
+    <div class="main-content">
+        <div v-if="cmd">
+            <form @submit.prevent="command">
+                <label for="commandText">Input command</label>
+                <input class="keyText" id="commandText" name="commandText" type="text" v-model="commandText">
+                <input type="submit" value="Execute">
+            </form>
+        </div>
+        <div v-if="showDetails">
+            <form @submit.prevent="changePath">
+                <label for="path">Path:</label>
+                <input class="keyText" id="path" name="path" type="text" v-model="path">
+                <input type="submit" value="Submit">
+            </form>
+            <form @submit.prevent="submitUpload" enctype="multipart/form-data" method="post">
+                <input id="file" name="file" type="file">
+                <input :value="url" name="url" type="hidden">
+                <input :value="path" name="path" type="hidden">
+                <input type="submit" value="Upload">
+            </form>
+            <div>
+                <button @click="homePath">根目录</button>
+                <button @click="UpDir">上级目录</button>
+            </div>
+            <table>
+                <thead>
+                <tr>
+                    <th>id</th>
+                    <th>File Name</th>
+                    <th>Type</th>
+                    <th>Time</th>
+                    <th>Size</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr :key="index" v-for="(line, index) in paginatedLines">
+                    <td align="center">{{ index + 1 + (currentPage - 1) * pageSize }}</td>
+                    <td align="center">
+                        <span @click="handleClick(line)" @contextmenu.prevent="showContextMenu($event, line)" class="underline-blue">{{ line.name }}</span>
+                    </td>
+                    <td align="center">{{ line.type }}</td>
+                    <td align="center">{{ line.time }}</td>
+                    <td align="center">{{ line.size }}</td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="context-menu" ref="contextMenu">
+                <div @click="downloadFile(selectedFile.name)" class="context-menu-item" v-if="!isDirectory">下载文件</div>
+                <div @click="deleteFile(selectedFile.name)" class="context-menu-item">删除文件</div>
+            </div>
+            <div style="color:red;" v-if="errorMessage">{{ errorMessage }}</div>
+            <div>
+                <button :disabled="currentPage === 1" @click="prevPage">上一页</button>
+                <button :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+                <span>第 {{ currentPage }} 页 共 {{ totalPages }}页</span>
+            </div>
+        </div>
+        <div style="color:black;" v-if="tureMessage">{{ tureMessage }}, 请选择功能</div>
+        <div style="color:red;" v-if="errorsMessage">{{ errorsMessage }}</div>
+        <button @click="createInputLine" v-if="ter"> 连接终端 </button><br>
+        <div class="terminal" id="terminal" v-if="ter">
+            <div class="output" id="output">
+                <div :key="line.id" v-for="line in kines">{{ line.text }}</div>
+            </div>
+        </div>
+        <div v-if="cmdResult.length">
+            <p :key="index" v-for="(line, index) in cmdResult">{{ line }}</p>
+        </div>
+    </div>
+</div>
+<script src="/static/main.js"></script>
+<script src="/static/app.js"></script>
+
+</body>
+</html>
