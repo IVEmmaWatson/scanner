@@ -66,8 +66,8 @@ func (ipv4 *ipv4) List() []net.IP {
 		unitList = append(unitList, ip)
 	}
 
-	buf := make([]byte, 4)
 	for _, v := range unitList {
+		buf := make([]byte, 4)
 		binary.BigEndian.PutUint32(buf, v)
 		ipv4List = append(ipv4List, buf)
 	}
