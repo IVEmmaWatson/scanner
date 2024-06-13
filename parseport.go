@@ -138,8 +138,12 @@ func (ir *intRange) ToUint16() (*PortRange, error) {
 
 func (pr *PortRange) Ports() []uint16 {
 	result := make([]uint16, 0, pr.end-pr.begin+1)
-	for i := pr.begin; i <= pr.end; i++ {
+	for i := pr.begin; i <= pr.end; {
 		result = append(result, i)
+		if i == 65535 {
+			break
+		}
+		i++
 	}
 	return result
 }
