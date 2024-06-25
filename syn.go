@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
@@ -26,7 +27,12 @@ type Scanner struct {
 	tcpPort []uint16
 }
 
+type Job struct {
+	port uint16
+}
+
 func SynScan(dstIP net.IP, gateway, srcCIDR string, port []uint16) error {
+	// , result chan layers.TCPPort
 
 	gw := net.ParseIP(gateway)
 	cidr := srcCIDR
@@ -73,9 +79,17 @@ func SynScan(dstIP net.IP, gateway, srcCIDR string, port []uint16) error {
 		}
 	}
 
-	time.Sleep(time.Second * 5)
-	if err = s.tcpRead(); err != nil {
-		fmt.Println("syn read error:", err)
+	// var result layers.TCPPort
+	var res map[layers.TCPPort]bool
+	if err, res = s.tcpRead(); err != nil {
+
+		if err.Error() != "tcp port check is end" {
+			return err
+		}
+	}
+	for tcpPort := range res {
+		// result <- tcpPort
+		fmt.Printf("%v is open\n", tcpPort)
 	}
 	return nil
 }
@@ -156,11 +170,12 @@ func (s *Scanner) ipv4ARP() error {
 		return err
 	}
 
+	// s.handle为这个网络接口的句柄
 	if err := s.handle.WritePacketData(buf.Bytes()); err != nil {
 		return err
 	}
 
-	fmt.Println("ARP request sent successfully.")
+	// fmt.Println("ARP request sent successfully.")
 	return nil
 }
 
@@ -236,7 +251,7 @@ func (s *Scanner) ipv4GetAddr() error {
 		if arpLayer := packet.Layer(layers.LayerTypeARP); arpLayer != nil {
 			arp := arpLayer.(*layers.ARP)
 			if net.IP(arp.SourceProtAddress).Equal(s.gwIP) {
-				fmt.Println("ARP 响应接收成功")
+				// fmt.Println("ARP 响应接收成功")
 				// fmt.Println("ARP 获取的目标 MAC 地址:", arp.SourceHwAddress)
 				Mac = arp.SourceHwAddress
 				break
@@ -272,6 +287,8 @@ func (s *Scanner) ipv6GetAddr() error {
 
 		if icmpV6 := packet.Layer(layers.LayerTypeICMPv6); icmpV6 != nil {
 			icmp := icmpV6.(*layers.ICMPv6)
+			//  Neighbor Solicitation类似于 IPv4 中发送的 ARP 请求
+			//  该 IPv6 地址的设备会回应一个 Neighbor Advertisement (NA) 消息，其中包含其 MAC 地址。
 			if icmp.TypeCode.Type() == layers.ICMPv6TypeNeighborAdvertisement {
 				// NDP协议数据都是28字节，最后6字节为mac地址，中间16字节为ipv6地址
 				ip6 := net.IP(icmp.Payload[4:20])
@@ -322,19 +339,22 @@ func (s *Scanner) ipv4SynRequest() error {
 		return err
 	}
 
-	for _, port := range s.tcpPort {
-		tcp.DstPort = layers.TCPPort(port)
-		buffer := gopacket.NewSerializeBuffer()
-		if err := gopacket.SerializeLayers(buffer, s.opt, &eth, &ip4, &tcp); err != nil {
-			return err
-		}
+	job := make(chan Job, 5000)
+	var wg sync.WaitGroup
 
-		packetData := buffer.Bytes()
-		if err := s.handle.WritePacketData(packetData); err != nil {
-			return err
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go s.workerSend(job, &wg, eth, ip4, tcp)
+	}
+
+	for _, port := range s.tcpPort {
+		job <- Job{
+			port: port,
 		}
 	}
 
+	close(job)
+	wg.Wait()
 	return nil
 }
 
@@ -382,33 +402,64 @@ func (s *Scanner) ipv6SynRequest() error {
 	return nil
 }
 
-func (s *Scanner) tcpRead() error {
+func (s *Scanner) tcpRead() (error, map[layers.TCPPort]bool) {
+	// 收集端口和error的通道
+	portResultChan := make(chan layers.TCPPort)
+	errorChan := make(chan error)
+	// 唯一值map
+	openList := make(map[layers.TCPPort]bool)
+	// packet任务池
+	packetChan := make(chan gopacket.Packet)
 
-	start := time.Now()
+	for i := 0; i < 3; i++ {
+		go s.workerRead(packetChan, portResultChan)
+	}
+
+	go s.readPackets(packetChan, errorChan)
+
+	for {
+		select {
+		case port := <-portResultChan:
+			if !openList[port] {
+				openList[port] = true
+				// fmt.Printf("%v port is open\n", port)
+			}
+		case err := <-errorChan:
+			return err, nil
+		case <-time.After(time.Millisecond * 500):
+			return errors.New("tcp port check is end"), openList
+		}
+
+	}
+
+}
+
+func (s *Scanner) workerRead(packetChan chan gopacket.Packet, resultChan chan layers.TCPPort) {
+	for packet := range packetChan {
+		// 解析数据包、处理TCP层
+		// packet的layer方法接收一个 goPacket.LayerType 类型的参数，这里传入的是 layers.LayerTypeTCP，表示我们想要获取数据包中的 TCP 层
+		// 返回一个 goPacket.Layer 接口类型的对象，该对象表示数据包中的某一层。如果数据包中包含 TCP 层，这里会返回一个表示 TCP 层的对象
+		if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
+			// 因为返回的tcpLayer是接口类型，所以需要类型断言成具体类型
+			tcp := tcpLayer.(*layers.TCP)
+			if tcp.DstPort == 12345 && tcp.SYN && tcp.ACK {
+				resultChan <- tcp.SrcPort
+			}
+		}
+	}
+}
+
+func (s *Scanner) readPackets(packetChan chan gopacket.Packet, errorChan chan error) {
 	for {
 		data, _, err := s.handle.ReadPacketData()
 		if err != nil {
 			if err == pcap.NextErrorTimeoutExpired {
-				return errors.New("TCP 读取错误错误")
+				errorChan <- errors.New("读取超时")
 			}
 		}
 
 		packet := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.NoCopy)
-
-		if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-			tcp := tcpLayer.(*layers.TCP)
-			if tcp.DstPort == 12345 && tcp.SYN && tcp.ACK {
-				fmt.Printf("%v port to %v\n", tcp.SrcPort, tcp.DstPort)
-				fmt.Printf("%v port is open\n", tcp.SrcPort)
-				continue
-			}
-		}
-
-		if time.Since(start) > time.Second*5 {
-			return errors.New("tcp port check is end")
-
-		}
-
+		packetChan <- packet
 	}
 
 }
@@ -454,5 +505,23 @@ func (s *Scanner) ipCheck() bool {
 		return true
 	} else {
 		return false
+	}
+}
+
+func (s *Scanner) workerSend(jobs <-chan Job, wg *sync.WaitGroup, eth layers.Ethernet, ip4 layers.IPv4, tcp layers.TCP) {
+	defer wg.Done()
+	for job := range jobs {
+
+		tcp.DstPort = layers.TCPPort(job.port)
+		buffer := gopacket.NewSerializeBuffer()
+		if err := gopacket.SerializeLayers(buffer, s.opt, &eth, &ip4, &tcp); err != nil {
+			log.Println("SerializeLayers error:", err)
+			continue
+		}
+
+		packetData := buffer.Bytes()
+		if err := s.handle.WritePacketData(packetData); err != nil {
+			log.Println("WritePacketData error", err)
+		}
 	}
 }
