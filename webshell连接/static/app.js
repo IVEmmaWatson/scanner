@@ -597,7 +597,6 @@ new Vue({
             this.ter = true;
             this.cmd = false;
             this.showDetails = false;
-            this.resetPath()
             const output = document.getElementById('output');
             const inputLine = document.createElement('div');
             inputLine.className = 'input-line';
