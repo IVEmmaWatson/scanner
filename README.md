@@ -1,5 +1,5 @@
 # **syn scanner**
-![baidu](http://www.baidu.com/img/bdlogo.gif "百度logo")
+![命令执行](https://github.com/IVEmmaWatson/scanner/blob/master/example/filemg.png)
 # Description
 -this is a simple program
 # update...
